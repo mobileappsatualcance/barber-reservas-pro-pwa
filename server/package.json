@@ -1,0 +1,19 @@
+{
+  "name": "barber-reservas-pro-pwa",
+  "version": "1.1.0",
+  "type": "module",
+  "description": "App de reservas PWA con panel admin, anti-solapamientos, Web Push para barbero y recordatorios para clientes.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "init:db": "node server.js --init-db",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "web-push": "^3.6.6"
+  }
+}

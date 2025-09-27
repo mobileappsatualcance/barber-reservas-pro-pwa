@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Panel — Barbería</title>
+<meta name="theme-color" content="#10b981"/>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+<main class="max-w-6xl mx-auto p-4 space-y-6">
+  <h1 class="text-2xl font-bold">Panel de administración</h1>
+
+  <section id="secLogin" class="bg-slate-800/60 border border-slate-700 rounded-2xl p-4">
+    <h2 class="text-lg font-semibold mb-2">Acceso</h2>
+    <div class="flex gap-2 items-center">
+      <input id="pin" type="password" placeholder="PIN de administrador" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+      <button id="btnLogin" class="px-3 py-2 bg-emerald-600 rounded-lg">Entrar</button>
+      <p id="loginMsg" class="text-sm ml-2"></p>
+    </div>
+  </section>
+
+  <section id="secMain" class="hidden">
+    <div class="flex items-center gap-2">
+      <select id="barberFilter" class="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1 text-sm"></select>
+      <input id="datePicker" type="date" class="bg-slate-900 border border-slate-700 rounded-xl px-2 py-1 text-sm">
+      <button id="btnSubscribeBarber" class="px-3 py-2 bg-indigo-600 rounded-lg">Activar notificaciones en este dispositivo (barbero seleccionado)</button>
+      <span id="subMsg" class="text-sm ml-2"></span>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <section class="bg-slate-800/60 border border-slate-700 rounded-2xl p-4">
+        <h2 class="text-lg font-semibold mb-3">Nueva/Editar reserva</h2>
+        <form id="bookingForm" class="grid md:grid-cols-6 gap-3">
+          <input id="cliente" required placeholder="Cliente" class="md:col-span-2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+          <input id="contacto" placeholder="Contacto" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+          <select id="barbero" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2"></select>
+          <select id="servicio" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2"></select>
+          <select id="estado" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+            <option value="pendiente">Pendiente</option>
+            <option value="confirmada">Confirmada</option>
+            <option value="cancelada">Cancelada</option>
+          </select>
+          <input id="inicio" type="datetime-local" required class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+          <input id="fin" type="datetime-local" required class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+          <div class="md:col-span-6 flex gap-2">
+            <button class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 rounded-xl">Guardar</button>
+            <button id="clearBtn" type="button" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl">Limpiar</button>
+            <span id="status" class="text-sm ml-2"></span>
+          </div>
+          <input id="reservaId" type="hidden">
+        </form>
+      </section>
+
+      <section class="bg-slate-800/60 border border-slate-700 rounded-2xl p-4">
+        <h2 class="text-lg font-semibold mb-3">Agenda del día</h2>
+        <ul id="list" class="divide-y divide-slate-700"></ul>
+      </section>
+    </div>
+
+    <section class="bg-slate-800/60 border border-slate-700 rounded-2xl p-4">
+      <h2 class="text-lg font-semibold mb-3">Catálogo</h2>
+      <div class="grid md:grid-cols-2 gap-3">
+        <div class="space-y-2">
+          <h3 class="font-semibold">Barberos</h3>
+          <div class="flex gap-2">
+            <input id="newBarberName" placeholder="Nombre del barbero" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+            <button id="addBarberBtn" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl">+ Barbero</button>
+          </div>
+          <ul id="barbersList" class="text-sm space-y-1"></ul>
+        </div>
+        <div class="space-y-2">
+          <h3 class="font-semibold">Servicios</h3>
+          <div class="flex gap-2">
+            <input id="newServiceName" placeholder="Nombre del servicio" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+            <input id="newServiceDur" type="number" min="5" step="5" value="30" class="w-24 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2" />
+            <button id="addServiceBtn" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl">+ Servicio</button>
+          </div>
+          <ul id="servicesList" class="text-sm space-y-1"></ul>
+        </div>
+      </div>
+    </section>
+  </section>
+</main>
+
+<script>
+if('serviceWorker' in navigator){ window.addEventListener('load', ()=> navigator.serviceWorker.register('/sw.js') ); }
+const $ = s=>document.querySelector(s);
+
+async function vapid(){ const r=await fetch('/api/push/vapid'); const d=await r.json(); return d.publicKey||''; }
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+async function subscribeBarber(barberId){
+  const reg = await navigator.serviceWorker.ready;
+  const publicKey = await vapid();
+  if(!publicKey) throw new Error('Servidor sin claves de notificación');
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+  const res = await fetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:'barber', barberId, subscription: sub})});
+  const d = await res.json(); if(!res.ok) throw new Error(d.error||'Error');
+  return d.id;
+}
+
+let authed = false;
+$('#btnLogin').addEventListener('click', async ()=>{
+  const pin = $('#pin').value.trim();
+  const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin})});
+  const d = await r.json();
+  if(r.ok){ authed = true; $('#secLogin').classList.add('hidden'); $('#secMain').classList.remove('hidden'); init(); }
+  else { $('#loginMsg').textContent = 'PIN incorrecto'; }
+});
+
+async function api(path){ return (await fetch(path)).json(); }
+async function save(path, payload){ const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'Error'); return d; }
+
+const barberFilter = $('#barberFilter'), datePicker=$('#datePicker'), list=$('#list');
+const fBarbero=$('#barbero'), fServicio=$('#servicio'), estado=$('#estado'), form=$('#bookingForm'), statusEl=$('#status');
+
+async function loadCatalogs(){
+  const [barbers, services] = await Promise.all([api('/api/barbers'), api('/api/services')]);
+  barberFilter.innerHTML = barbers.filter(b=>b.active).map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  fBarbero.innerHTML = barberFilter.innerHTML;
+  fServicio.innerHTML = services.map(s=>`<option value="${s.id}">${s.name} (${s.duration_minutes}m)</option>`).join('');
+  $('#barbersList').innerHTML = barbers.map(b=>`<li>${b.name} ${b.active?'<span class="text-emerald-400">(activo)</span>':'<span class="text-slate-400">(inactivo)</span>'}</li>`).join('');
+  $('#servicesList').innerHTML = services.map(s=>`<li>${s.name} <span class="text-slate-400">(${s.duration_minutes}m)</span></li>`).join('');
+}
+
+async function renderList(){
+  const params = new URLSearchParams({ date: datePicker.value || '', barberId: barberFilter.value || '' });
+  const items = await api('/api/bookings?'+params.toString());
+  list.innerHTML = items.map(r=>{
+    const s=new Date(r.start_iso), e=new Date(r.end_iso);
+    return `<li class="py-2 flex items-start justify-between gap-2">
+      <div>
+        <div class="text-sm text-slate-300">${s.toLocaleDateString()} · ${s.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}—${e.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} · <span class="uppercase text-xs ${r.status==='cancelada'?'text-red-400':'text-emerald-300'}">${r.status}</span></div>
+        <div class="font-semibold">${r.client} <span class="text-slate-400">(${r.contact||'—'})</span></div>
+      </div>
+      <div class="flex items-center gap-2">
+        ${r.status!=='cancelada'?`<button class="text-xs px-2 py-1 rounded bg-amber-600 hover:bg-amber-500" data-edit="${r.id}">Editar</button>`:''}
+        ${r.status!=='cancelada'?`<button class="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-500" data-cancel="${r.id}">Cancelar</button>`:''}
+      </div>
+    </li>`
+  }).join('') || '<li class="py-4 text-slate-400 text-sm">Sin reservas.</li>';
+
+  list.querySelectorAll('[data-edit]').forEach(btn=> btn.addEventListener('click', ()=>{
+    const id = Number(btn.dataset.edit);
+    const r = items.find(x=>x.id===id);
+    if(!r) return;
+    $('#reservaId').value = r.id;
+    $('#cliente').value = r.client;
+    $('#contacto').value = r.contact||'';
+    fBarbero.value = r.barber_id;
+    fServicio.value = r.service_id||'';
+    estado.value = r.status||'pendiente';
+    $('#inicio').value = r.start_iso.slice(0,16);
+    $('#fin').value = r.end_iso.slice(0,16);
+    status('Editando reserva');
+  }));
+
+  list.querySelectorAll('[data-cancel]').forEach(btn=> btn.addEventListener('click', async ()=>{
+    if(confirm('¿Cancelar esta reserva?')){ await fetch('/api/bookings/'+btn.dataset.cancel+'/cancel',{method:'POST'}); renderList(); }
+  }));
+}
+
+function status(msg, ok){ statusEl.textContent=msg; statusEl.className='text-sm '+(ok?'text-emerald-400':'text-amber-400'); }
+
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const payload = {
+    id: $('#reservaId').value || undefined,
+    client: $('#cliente').value.trim(),
+    contact: $('#contacto').value.trim(),
+    serviceId: Number(fServicio.value||0)||null,
+    barberId: Number(fBarbero.value),
+    startISO: new Date($('#inicio').value).toISOString(),
+    endISO: new Date($('#fin').value).toISOString(),
+    status: estado.value
+  };
+  const r = await fetch('/api/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d = await r.json();
+  if(!r.ok){ status(d.error||'Error'); }
+  else { status(payload.id? 'Actualizada ✅':'Creada ✅', true); form.reset(); $('#reservaId').value=''; renderList(); }
+});
+
+$('#clearBtn').addEventListener('click', ()=>{ form.reset(); $('#reservaId').value=''; status(''); });
+$('#btnSubscribeBarber').addEventListener('click', async ()=>{
+  try{
+    await Notification.requestPermission();
+    if(Notification.permission!=='granted') return $('#subMsg').textContent='Permiso no otorgado';
+    const id = await subscribeBarber(Number(barberFilter.value));
+    $('#subMsg').textContent = 'Dispositivo suscrito ✅ (ID '+id+')';
+  }catch(e){ $('#subMsg').textContent = e.message; }
+});
+
+async function init(){
+  const today = new Date().toISOString().slice(0,10);
+  $('#datePicker').value = today;
+  await loadCatalogs();
+  renderList();
+
+  // catálogo alta rápida
+  $('#addBarberBtn').addEventListener('click', async ()=>{
+    const name = $('#newBarberName').value.trim(); if(!name) return alert('Escribe un nombre');
+    await save('/api/barbers',{name, active:1}); $('#newBarberName').value=''; await loadCatalogs();
+  });
+  $('#addServiceBtn').addEventListener('click', async ()=>{
+    const name = $('#newServiceName').value.trim(); if(!name) return alert('Escribe un servicio');
+    const duration_minutes = Number($('#newServiceDur').value||30);
+    await save('/api/services',{name, duration_minutes}); $('#newServiceName').value=''; await loadCatalogs();
+  });
+
+  barberFilter.addEventListener('change', renderList);
+  datePicker.addEventListener('change', renderList);
+}
+</script>
+</body>
+</html>

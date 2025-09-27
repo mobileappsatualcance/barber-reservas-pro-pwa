@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Reservar cita — Barbería</title>
+<meta name="theme-color" content="#10b981"/>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+<main class="max-w-md mx-auto p-4 space-y-4">
+  <h1 class="text-2xl font-bold">Reservar cita</h1>
+  <button id="btnNotify" class="px-3 py-2 bg-emerald-600 rounded-lg">Activar notificaciones (cliente)</button>
+  <p id="notifyStatus" class="text-sm text-slate-300"></p>
+  <form id="form" class="space-y-3 bg-slate-800/60 border border-slate-700 p-4 rounded-2xl">
+    <input id="cliente" required placeholder="Tu nombre" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+    <input id="contacto" placeholder="Teléfono o email" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+    <div class="grid grid-cols-2 gap-2">
+      <select id="barbero" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2"></select>
+      <select id="servicio" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2"></select>
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+      <input id="inicio" type="datetime-local" required class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+      <input id="fin" type="datetime-local" required class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+    </div>
+    <div class="grid grid-cols-2 gap-2 items-center">
+      <label class="text-sm">
+        <input id="chkRem" type="checkbox" class="mr-1 align-middle"> Recordarme
+      </label>
+      <select id="remMin" class="bg-slate-900 border border-slate-700 rounded-xl px-2 py-2">
+        <option value="30">30 min antes</option>
+        <option value="60">1 hora antes</option>
+        <option value="120">2 horas antes</option>
+      </select>
+    </div>
+    <button class="w-full px-4 py-2 bg-emerald-500 hover:bg-emerald-600 rounded-xl">Reservar</button>
+    <p id="status" class="text-sm"></p>
+  </form>
+
+  <section class="space-y-2">
+    <h2 class="text-lg font-semibold">Mis próximas citas</h2>
+    <ul id="list" class="text-sm space-y-1"></ul>
+  </section>
+</main>
+
+<script>
+if('serviceWorker' in navigator){ window.addEventListener('load', ()=> navigator.serviceWorker.register('/sw.js') ); }
+
+async function vapid(){ const r=await fetch('/api/push/vapid'); const d=await r.json(); return d.publicKey||''; }
+async function subscribe(role, barberId){
+  const reg = await navigator.serviceWorker.ready;
+  const publicKey = await vapid();
+  if(!publicKey) throw new Error('Servidor sin claves de notificación');
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+  const res = await fetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role, barberId, subscription: sub})});
+  const data = await res.json(); if(!res.ok) throw new Error(data.error||'Error');
+  return data.id;
+}
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
+const $ = s=>document.querySelector(s);
+const st = $('#status'); const ns = $('#notifyStatus');
+const form = $('#form'), list = $('#list');
+let clientSubId = localStorage.getItem('clientSubId') || null;
+
+document.getElementById('btnNotify').addEventListener('click', async ()=>{
+  try{
+    await Notification.requestPermission();
+    if(Notification.permission!=='granted') return ns.textContent='Permiso no otorgado.';
+    clientSubId = await subscribe('client', null);
+    localStorage.setItem('clientSubId', clientSubId);
+    ns.textContent = 'Notificaciones activadas ✅';
+  }catch(e){ ns.textContent = e.message; }
+});
+
+async function api(path){ return (await fetch(path)).json(); }
+async function loadCatalogs(){
+  const [barbers, services] = await Promise.all([api('/api/barbers'), api('/api/services')]);
+  $('#barbero').innerHTML = barbers.filter(b=>b.active).map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  $('#servicio').innerHTML = services.map(s=>`<option value="${s.id}">${s.name} (${s.duration_minutes}m)</option>`).join('');
+}
+async function loadList(){
+  const ymd = new Date().toISOString().slice(0,10);
+  const items = await api('/api/bookings?date='+ymd);
+  list.innerHTML = items.slice(0,10).map(r=>{
+    const s=new Date(r.start_iso), e=new Date(r.end_iso);
+    return `<li>${s.toLocaleDateString()} ${s.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}–${e.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} · ${r.client} (${r.contact||'–'})</li>`
+  }).join('') || '<li>Sin reservas futuras.</li>';
+}
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const payload = {
+    client: $('#cliente').value.trim(),
+    contact: $('#contacto').value.trim(),
+    serviceId: Number($('#servicio').value)||null,
+    barberId: Number($('#barbero').value),
+    startISO: new Date($('#inicio').value).toISOString(),
+    endISO: new Date($('#fin').value).toISOString(),
+    status: 'pendiente',
+    clientSubId: clientSubId?Number(clientSubId):null,
+    reminderMinutes: $('#chkRem').checked ? Number($('#remMin').value) : null
+  };
+  const r = await fetch('/api/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d = await r.json();
+  if(!r.ok){ st.textContent = d.error || 'Error'; st.className='text-sm text-amber-400'; }
+  else { st.textContent = 'Reserva creada ✅'; st.className='text-sm text-emerald-400'; form.reset(); loadList(); }
+});
+
+loadCatalogs(); loadList();
+</script>
+</body>
+</html>
