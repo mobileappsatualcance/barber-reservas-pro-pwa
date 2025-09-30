@@ -1,0 +1,13 @@
+name: Reminders Cron
+on:
+  schedule:
+    - cron: "*/5 * * * *"  # cada 5 minutos (UTC)
+  workflow_dispatch: {}
+jobs:
+  call:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST cron endpoint
+        run: curl -s -X POST "$CRON_URL"
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
